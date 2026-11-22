@@ -1,0 +1,33 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>Escrutinio S25</title><style>
+:root{font-family:system-ui,Arial;background:#f1f5f9;color:#0f172a}*{box-sizing:border-box}body{margin:0;padding:14px;max-width:640px;margin:auto}h1{font-size:23px;margin:4px 0 14px}.summary{background:#0f172a;color:white;border-radius:18px;padding:18px;text-align:center;margin-bottom:14px}.summary strong{font-size:55px;display:block;font-variant-numeric:tabular-nums}.summary small{color:#cbd5e1}.item{background:white;border-radius:15px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px #0001}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:20px;font-weight:750}.top output{font-size:32px;font-variant-numeric:tabular-nums}.buttons{display:grid;grid-template-columns:1fr 2fr;gap:10px}button{min-height:62px;border:0;border-radius:12px;font-size:22px;font-weight:750;touch-action:manipulation}button:active{filter:brightness(.87)}button.minus{background:#e2e8f0;color:#334155}button.plus{background:#2563eb;color:white}button:disabled{opacity:.4}.actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.actions button{font-size:15px;min-height:52px;background:#dbeafe;color:#1e40af}.actions .danger{background:#fee2e2;color:#991b1b}.footer{font-size:12px;color:#475569;margin:14px 0;line-height:1.5}#notice{font-size:14px;min-height:22px;color:#166534}#history{font-size:12px;color:#475569;overflow-wrap:anywhere}
+</style></head><body><h1>🗳️ Escrutinio de votos</h1><div class="summary"><small>TOTAL DE VOTOS CONTADOS</small><strong id="total">0</strong><small id="validos">Votos a listas: 0</small></div><main id="items"></main><div class="actions"><button onclick="undo()">↶ Deshacer</button><button onclick="exportCsv()">⬇ Exportar CSV</button><button onclick="copySummary()">Copiar totales</button><button class="danger" onclick="resetAll()">Reiniciar</button></div><p id="notice" aria-live="polite"></p><div id="history"></div><p class="footer">Los datos se guardan en este teléfono después de cada operación. La pantalla permanece encendida mientras la aplicación está abierta. Antes del escrutinio real, probá el guardado y la exportación. Esta herramienta es auxiliar: contrastá el resultado con el acta oficial.</p><script>
+'use strict';
+const cats=[['l11','Lista 11'],['l15','Lista 15'],['anulado','Voto anulado'],['blanco','Voto en blanco'],['otros','Otras causas']];
+const key='elecciones-s25-v1';
+let data;
+try{data=JSON.parse(localStorage.getItem(key)||'null')}catch(e){data=null}
+if(!data||!data.counts||!Array.isArray(data.history))data={counts:{l11:0,l15:0,anulado:0,blanco:0,otros:0},history:[]};
+for(const [id] of cats){if(!Number.isSafeInteger(data.counts[id])||data.counts[id]<0)data.counts[id]=0}
+const $=id=>document.getElementById(id);
+function save(){try{localStorage.setItem(key,JSON.stringify(data));$('notice').textContent='✓ Guardado automático'}catch(e){$('notice').textContent='⚠ No se pudo guardar: exportá los datos ahora'}}
+function draw(){
+ $('items').innerHTML=cats.map(([id,name])=>'<section class="item"><div class="top"><span>'+name+'</span><output>'+data.counts[id]+'</output></div><div class="buttons"><button class="minus" '+(data.counts[id]===0?'disabled':'')+' onclick="change(\''+id+'\',-1)">− Restar</button><button class="plus" onclick="change(\''+id+'\',1)">+ Sumar</button></div></section>').join('');
+ const total=Object.values(data.counts).reduce((a,b)=>a+b,0);
+ $('total').textContent=total;$('validos').textContent='Votos a listas: '+(data.counts.l11+data.counts.l15);
+ $('history').textContent='Operaciones registradas: '+data.history.length;
+}
+function change(id,delta){if(!cats.some(c=>c[0]===id)||data.counts[id]+delta<0)return;data.counts[id]+=delta;data.history.push({id,delta,time:new Date().toISOString()});save();draw()}
+function undo(){const last=data.history.pop();if(!last)return;data.counts[last.id]-=last.delta;save();draw()}
+function resetAll(){if(!confirm('¿Borrar TODOS los votos? Esta acción no se puede deshacer.'))return;if(!confirm('Confirmá nuevamente: ¿reiniciar escrutinio?'))return;data={counts:{l11:0,l15:0,anulado:0,blanco:0,otros:0},history:[]};save();draw()}
+function summary(){return cats.map(([id,name])=>name+': '+data.counts[id]).join('\n')+'\nTOTAL: '+Object.values(data.counts).reduce((a,b)=>a+b,0)}
+function copySummary(){if(window.Android&&Android.copyText){Android.copyText(summary());$('notice').textContent='Totales copiados'}else if(navigator.clipboard){navigator.clipboard.writeText(summary()).then(()=>$('notice').textContent='Totales copiados')}}
+function exportCsv(){
+ const lines=['tipo,categoria,cantidad,fecha,variacion'];
+ for(const [id,name] of cats)lines.push('resumen,"'+name+'",'+data.counts[id]+',,');
+ lines.push('resumen,"TOTAL",'+Object.values(data.counts).reduce((a,b)=>a+b,0)+',,');
+ for(const h of data.history)lines.push('operacion,"'+cats.find(c=>c[0]===h.id)[1]+'",,"'+h.time+'",'+h.delta);
+ const csv='\ufeff'+lines.join('\r\n'),name='escrutinio-'+new Date().toISOString().slice(0,10)+'.csv';
+ if(window.Android&&Android.saveCsv){Android.saveCsv(csv,name)}else{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),5000)}
+}
+draw();
+</script></body></html>
